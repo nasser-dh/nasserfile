@@ -5,7 +5,6 @@ import numpy as np
 import plotly.graph_objs as go
 
 st.set_page_config(page_title="Advanced Stock & Crypto Analyzer", layout="centered")
-
 st.title("📈 Advanced Trend & Risk Analyzer with Targets")
 
 symbol = st.text_input("Enter symbol (US stock/crypto, e.g. AAPL, MSFT, TSLA, BTC-USD):")
@@ -120,21 +119,32 @@ def analyze_symbol(symbol, risk_mode):
     st.write(f"**Risk/Reward Ratio:** {rr_ratio:.2f}" if not np.isnan(rr_ratio) else "**Risk/Reward Ratio:** N/A")
     st.write(f"**Nearest Support:** {support:.2f}, **Nearest Resistance:** {resistance:.2f}")
     st.write(f"**ATR (volatility):** {atr:.2f}")
-  # Option-like buy/sell scenario (for asset itself)
-st.markdown("**If you opened a 'Call' style (Buy) position:**")
-st.write(f"Entry (Buy): {close:.2f}")
-st.write(f"Target (Sell to take profit): {target_price:.2f}")
-st.write(f"Stop Loss: {stop_loss:.2f}")
-rr = (target_price - close) / max(1e-6, (close - stop_loss))
-st.write(f"**Risk/Reward ratio:** {rr:.2f}")
+    st.write(f"**Last Close:** {close:.2f}")
 
-st.markdown("**If you opened a 'Put' style (Short/Sell) position:**")
-put_target = close - abs(target_price - close)
-put_stop = close + abs(close - stop_loss)
-st.write(f"Entry (Sell): {close:.2f}")
-st.write(f"Target (Buy to cover profit): {put_target:.2f}")
-st.write(f"Stop Loss: {put_stop:.2f}")
-put_rr = (close - put_target) / max(1e-6, (put_stop - close))
-st.write(f"**Risk/Reward ratio:** {put_rr:.2f}")
+    # --------- 🟩 Option-like scenario summary below Last Close 🟩 ----------
+    st.markdown("**If you opened a 'Call' style (Buy) position:**")
+    st.write(f"Entry (Buy): {close:.2f}")
+    st.write(f"Target (Sell to take profit): {target_price:.2f}")
+    st.write(f"Stop Loss: {stop_loss:.2f}")
+    rr = (target_price - close) / max(1e-6, (close - stop_loss))
+    st.write(f"**Risk/Reward ratio:** {rr:.2f}")
+
+    st.markdown("**If you opened a 'Put' style (Short/Sell) position:**")
+    put_target = close - abs(target_price - close)
+    put_stop = close + abs(close - stop_loss)
+    st.write(f"Entry (Sell): {close:.2f}")
+    st.write(f"Target (Buy to cover profit): {put_target:.2f}")
+    st.write(f"Stop Loss: {put_stop:.2f}")
+    put_rr = (close - put_target) / max(1e-6, (put_stop - close))
+    st.write(f"**Risk/Reward ratio:** {put_rr:.2f}")
+    # -----------------------------------------------------------------------
+
+    st.markdown("""
+    ---  
+    _Targets and stops are auto-calculated using ATR, risk setting, and simple chart pattern logic.
+    Option-like sections suggest profit/loss zones for call/put style trades.  
+    This is a basic illustrative assistant; always check your own analysis before trading!_
+    """)
+
 if symbol:
     analyze_symbol(symbol, risk_mode)
