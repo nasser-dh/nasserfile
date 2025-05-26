@@ -119,31 +119,49 @@ def analyze_symbol(symbol, risk_mode):
     st.write(f"**Risk/Reward Ratio:** {rr_ratio:.2f}" if not np.isnan(rr_ratio) else "**Risk/Reward Ratio:** N/A")
     st.write(f"**Nearest Support:** {support:.2f}, **Nearest Resistance:** {resistance:.2f}")
     st.write(f"**ATR (volatility):** {atr:.2f}")
-    # Decide whether to suggest Call or Put based on action/trend/patterns     if (trend == "Uptrend" or bullish) and not bearish:         st.success("📈 **HIGHER CONFIDENCE: CALL (Buy/Long)**")         st.write(f"Entry (Buy): {close:.2f}")         st.write(f"Target (Sell to take profit): {target_price:.2f}")         st.write(f"Stop Loss: {stop_loss:.2f}")         rr = (target_price - close) / max(1e-6, (close - stop_loss))         st.write(f"**Risk/Reward ratio:** {rr:.2f}")     elif (trend == "Downtrend" or bearish) and not bullish:         st.error("📉 **HIGHER CONFIDENCE: PUT (Sell/Short)**")         put_target = close - abs(target_price - close)         put_stop = close + abs(close - stop_loss)         st.write(f"Entry (Sell): {close:.2f}")         st.write(f"Target (Buy to cover profit): {put_target:.2f}")         st.write(f"Stop Loss: {put_stop:.2f}")         put_rr = (close - put_target) / max(1e-6, (put_stop - close))         st.write(f"**Risk/Reward ratio:** {put_rr:.2f}")     else:         st.info("🤔 No strong trend or clear signal (neutral/sideways). Wait for a better setup.")
+    st.write(f"**Last Close:** {close:.2f}")
 
-    # --------- 🟩 Option-like scenario summary below Last Close 🟩 ----------
-    st.markdown("**If you opened a 'Call' style (Buy) position:**")
-    st.write(f"Entry (Buy): {close:.2f}")
-    st.write(f"Target (Sell to take profit): {target_price:.2f}")
-    st.write(f"Stop Loss: {stop_loss:.2f}")
-    rr = (target_price - close) / max(1e-6, (close - stop_loss))
-    st.write(f"**Risk/Reward ratio:** {rr:.2f}")
+    # --------- Only one most confident trade direction section ---------
+    trade_direction = None
+    trade_msg = ""
+    if (trend == "Uptrend" or bullish) and not bearish:
+        trade_direction = "CALL"
+        trade_msg = "📈 The advanced analysis indicates a HIGH CONFIDENCE **CALL (Buy/Long)** opportunity!"
+        entry = close
+        target = target_price
+        stop = stop_loss
+        rr = (target - entry) / max(1e-6, (entry - stop))
+    elif (trend == "Downtrend" or bearish) and not bullish:
+        trade_direction = "PUT"
+        trade_msg = "📉 The advanced analysis indicates a HIGH CONFIDENCE **PUT (Sell/Short)** opportunity!"
+        entry = close
+        target = close - abs(target_price - close)
+        stop = close + abs(close - stop_loss)
+        rr = (entry - target) / max(1e-6, (stop - entry))
+    else:
+        trade_direction = "NEUTRAL"
 
-    st.markdown("**If you opened a 'Put' style (Short/Sell) position:**")
-    put_target = close - abs(target_price - close)
-    put_stop = close + abs(close - stop_loss)
-    st.write(f"Entry (Sell): {close:.2f}")
-    st.write(f"Target (Buy to cover profit): {put_target:.2f}")
-    st.write(f"Stop Loss: {put_stop:.2f}")
-    put_rr = (close - put_target) / max(1e-6, (put_stop - close))
-    st.write(f"**Risk/Reward ratio:** {put_rr:.2f}")
+    if trade_direction == "CALL":
+        st.success(trade_msg)
+        st.write(f"Entry (Buy): {entry:.2f}")
+        st.write(f"Target (Sell to take profit): {target:.2f}")
+        st.write(f"Stop Loss: {stop:.2f}")
+        st.write(f"Risk/Reward ratio: {rr:.2f}")
+    elif trade_direction == "PUT":
+        st.error(trade_msg)
+        st.write(f"Entry (Sell): {entry:.2f}")
+        st.write(f"Target (Buy to cover profit): {target:.2f}")
+        st.write(f"Stop Loss: {stop:.2f}")
+        st.write(f"Risk/Reward ratio: {rr:.2f}")
+    else:
+        st.info("🤔 No strong trend or clear signal based on advanced analysis (neutral/sideways). No action recommended.")
     # -----------------------------------------------------------------------
 
     st.markdown("""
     ---  
     _Targets and stops are auto-calculated using ATR, risk setting, and simple chart pattern logic.
-    Option-like sections suggest profit/loss zones for call/put style trades.  
-    This is a basic illustrative assistant; always check your own analysis before trading!_
+    Option-like suggestion: Only the most confident direction is shown based on combined logic.  
+    Always check your own analysis before trading!_
     """)
 
 if symbol:
