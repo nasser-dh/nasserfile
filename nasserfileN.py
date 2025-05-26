@@ -30,9 +30,13 @@ def detect_pattern(df):
     return patterns
 
 def analyze_symbol(symbol, risk_mode):
-    df = yf.Ticker(symbol).history(period='6mo', interval='1d')
-    if df.empty:
-        st.warning("No data found for this symbol.")
+    try:
+        df = yf.Ticker(symbol).history(period='6mo', interval='1d')
+        if df.empty:
+            st.warning("No data found for this symbol. Double-check the symbol (like AAPL, TSLA, BTC-USD) and try again.")
+            return
+    except Exception as e:
+        st.error(f"⚠️ Could not fetch data for '{symbol}'.\nPossible reasons:\n- Symbol typo or wrong\n- Network/Yahoo block or busy\n- Try a different symbol or wait a little then retry.\n\nTechnical details: {e}")
         return
 
     df.dropna(inplace=True)
