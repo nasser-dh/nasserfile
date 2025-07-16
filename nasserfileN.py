@@ -12,14 +12,10 @@ symbol = st.text_input(
     "Enter symbol (US stock/crypto, e.g. AAPL, MSFT, TSLA, BTC-USD):"
 )
 risk_mode = st.selectbox("Select Risk Level", ["Low", "Medium", "High"])
-
-# —— NEW: strategy picker ——
 strategy = st.radio(
     "Choose Strategy",
     ["Very Fast Trade (<1h)", "Fast Trade (today)", "Long-Term Hold"]
 )
-
-# If long term, let user pick months ≥6
 months = None
 if strategy == "Long-Term Hold":
     months = st.slider(
@@ -60,21 +56,25 @@ def compute_rsi(series, window=14):
     rs = avg_gain / avg_loss
     return 100 - (100 / (1 + rs))
 
-def analyze_symbol(symbol, risk_mode, strategy, months=None):
-    # —— fetch data depending on strategy ——
-    if strategy == "Very Fast Trade (<1h)":
-        # sub-hour intraday data (5-min bars)
+def analyze_symbol(symbol, risk_mode, strategy, months=None, longterm=False):
+    # —— fetch data depending on strategy —— 
+    if not longterm and strategy == "Very Fast Trade (<1h)":
         df = yf.Ticker(symbol).history(period='1d', interval='5m')
-    else:
-        # daily for both Fast Trade and Long-Term
-        df = yf.Ticker(symbol).history(period='6mo', interval='1d')
+        strat_label = "Very Fast Trade (<1h)"
+    elif not longterm and strategy == "Fast Trade (today)":
+        df = yf.Ticker(symbol).history(period='10d', interval='15m')
+        strat_label = "Fast Trade (today)"
+    else: # Long-Term Hold or for longterm=True
+        period = f"{months}mo" if longterm else '6mo'
+        df = yf.Ticker(symbol).history(period=period, interval='1d')
+        strat_label = f"Long-Term Hold ({months}mo)" if longterm else "Long-Term Hold"
 
     if df.empty:
         st.warning("No data found for this symbol.")
-        return
+        return None
     df.dropna(inplace=True)
 
-    # common calculations
+    # Calculations
     df["MA_10"] = df.Close.rolling(10).mean()
     df["MA_30"] = df.Close.rolling(30).mean()
     df['H-L']   = df.High - df.Low
@@ -94,18 +94,14 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
     bullish = any(p in patterns for p in ["Bullish Engulfing","Hammer"])
     bearish = any(p in patterns for p in ["Bearish Engulfing"])
 
-    # —— risk-distance scaling —— 
-    if strategy == "Very Fast Trade (<1h)":
-        # one 5-min bar horizon
+    if not longterm and strategy == "Very Fast Trade (<1h)":
         risk_dist = mult * atr
-    elif strategy == "Fast Trade (today)":
-        # daily ATR → 1 trading day
+    elif not longterm and strategy == "Fast Trade (today)":
         risk_dist = mult * atr * math.sqrt(1)
-    else:  # Long-Term Hold
-        days = months * 21  # approx trading days
+    else:  # Long-Term Hold or longterm=True
+        days = (months or 12) * 21  # approx trading days in N months
         risk_dist = mult * atr * math.sqrt(days)
 
-    # decide action & stops/targets
     if (trend=="Uptrend" or bullish) and not bearish:
         action = "Buy / Go Long"
         stop_loss    = close - risk_dist
@@ -121,7 +117,7 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
 
     rr_ratio = abs((target_price - close) / (close - stop_loss))
 
-    # —— build chart —— 
+    # —— chart —— 
     fig = go.Figure(data=[go.Candlestick(
         x=df.index, open=df.Open, high=df.High, low=df.Low, close=df.Close
     )])
@@ -131,32 +127,41 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
         x=df.index, y=df.RSI_14, yaxis="y2", name="RSI(14)"
     ))
     fig.update_layout(
-        title=(
-            f"{symbol} | {trend} | {strategy}"
-            + (f" ({months} mo)" if strategy=="Long-Term Hold" else "")
-        ),
+        title=f"{symbol} | {trend} | {strat_label}",
         yaxis2=dict(overlaying="y", side="right", range=[0,100], title="RSI"),
         xaxis_rangeslider_visible=False,
         height=650
     )
-
-    st.subheader("Candlestick + RSI Chart")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown(f"""
-    **Strategy:** {strategy}  
-    {f"**Hold Period:** {months} months  " if strategy=="Long-Term Hold" else ""}  
-    **Trend:** {trend}  
-    **Patterns:** {', '.join(patterns) or 'None'}  
-    **Action:** {action}  
-    **Entry:** {close:.2f}  
-    **Target:** {target_price:.2f}  
-    **Stop Loss:** {stop_loss:.2f}  
-    **R/R Ratio:** {rr_ratio:.2f}  
-    **RSI(14):** {rsi:.1f}  
-    **ATR:** {atr:.2f}  
-    _Risk mult: {mult}, time-scale factor: {"1 bar" if strategy.startswith("Very Fast") else ("1 day" if strategy=="Fast Trade (today)" else f"{days} days (√)")}_
-    """)
+    # All the metrics you want to display
+    metrics = dict(
+        Strategy=strat_label,
+        Trend=trend,
+        Patterns=', '.join(patterns) or 'None',
+        Action=action,
+        Entry=f"{close:.2f}",
+        Target=f"{target_price:.2f}",
+        Stop_Loss=f"{stop_loss:.2f}",
+        RR_Ratio=f"{rr_ratio:.2f}",
+        RSI=f"{rsi:.1f}",
+        ATR=f"{atr:.2f}"
+    )
+    return fig, metrics
 
 if symbol:
-    analyze_symbol(symbol, risk_mode, strategy, months)
+    col1, col2 = st.columns(2)
+    # Short-term chart based on chosen strategy (hour or day)
+    with col1:
+        st.subheader("Short-Term Analysis")
+        out = analyze_symbol(symbol, risk_mode, strategy, months)
+        if out:
+            fig, metrics = out
+            st.plotly_chart(fig, use_container_width=True)
+            st.write(metrics)
+    # Long-term chart always shown for comparison
+    with col2:
+        st.subheader("Long-Term Analysis (12mo)")
+        out2 = analyze_symbol(symbol, risk_mode, "Long-Term Hold", 12, longterm=True)
+        if out2:
+            fig2, metrics2 = out2
+            st.plotly_chart(fig2, use_container_width=True)
+            st.write(metrics2)
