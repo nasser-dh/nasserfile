@@ -10,11 +10,11 @@ st.set_page_config(page_title="N9 AI Stock & News Analyzer", layout="centered")
 
 # N9 Custom Header
 st.markdown("""
-<div style='text-align:center; font-size:2.4em; color:#08f26e; font-weight:bold; letter-spacing:2px; margin-bottom: 0.2em;'>
+<div style='text-align:center; font-size:2.3em; color:#08f26e; font-weight:bold; letter-spacing:2px; margin-bottom: 0.2em;'>
     🚀 Welcome, <span style='color:#FAE90A;'>N9</span>!
 </div>
 <div style='text-align:center; font-size:1.25em; color:#2682d3; margin-bottom:2em;'>
-    Advanced AI-Powered Financial Analyzer
+    Advanced AI-Powered Financial Analyzer & News Reader
 </div>
 """, unsafe_allow_html=True)
 
@@ -191,7 +191,7 @@ rr_ratio = abs((target_price - close) / (close - stop_loss))
 
 # ---------- 5. Show Chart with Pattern Markers ----------
 st.markdown("<hr style='border:1.5px solid #fae90a'>", unsafe_allow_html=True)
-st.subheader("📊 Advanced Price Chart")
+st.subheader("📊 N9 Advanced Price Chart")
 fig = go.Figure(data=[go.Candlestick(
     x=df.index, open=df.Open, high=df.High, low=df.Low, close=df.Close, name="Price",
     increasing_line_color="#08f26e", decreasing_line_color="#2682d3"
@@ -216,7 +216,7 @@ fig.update_layout(
     yaxis2=dict(overlaying="y", side="right", range=[0,100], title="RSI"),
     xaxis_rangeslider_visible=False,
     height=650,
-    plot_bgcolor="#f4f6fa"
+    plot_bgcolor="#15171a"
 )
 st.plotly_chart(fig, use_container_width=True)
 
