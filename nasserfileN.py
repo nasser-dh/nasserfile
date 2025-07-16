@@ -12,40 +12,18 @@ symbol = st.text_input(
     "Enter symbol (US stock/crypto, e.g. AAPL, MSFT, TSLA, BTC-USD):"
 )
 risk_mode = st.selectbox("Select Risk Level", ["Low", "Medium", "High"])
+
 strategy = st.radio(
     "Choose Strategy",
     ["Very Fast Trade (<1h)", "Fast Trade (today)", "Long-Term Hold"]
 )
+
 months = None
 if strategy == "Long-Term Hold":
     months = st.slider(
         "Hold Period (months)", min_value=6, max_value=120, value=12,
         help="Choose how many months you plan to hold"
     )
-
-def detect_pattern(df):
-    patterns = []
-    last, curr = df.iloc[-2], df.iloc[-1]
-    # Bullish Engulfing
-    if (last.Close < last.Open and
-        curr.Close > curr.Open and
-        curr.Close > last.Open and
-        curr.Open < last.Close):
-        patterns.append("Bullish Engulfing")
-    # Bearish Engulfing
-    if (last.Close > last.Open and
-        curr.Close < curr.Open and
-        curr.Close < last.Open and
-        curr.Open > last.Close):
-        patterns.append("Bearish Engulfing")
-    # Hammer
-    if (curr.Close > curr.Open and
-        curr.Low < curr.Open - (curr.High - curr.Low) * 0.6):
-        patterns.append("Hammer")
-    # Doji
-    if abs(curr.Open - curr.Close) < (curr.High - curr.Low) * 0.1:
-        patterns.append("Doji")
-    return patterns
 
 def compute_rsi(series, window=14):
     delta = series.diff()
@@ -57,24 +35,18 @@ def compute_rsi(series, window=14):
     return 100 - (100 / (1 + rs))
 
 def analyze_symbol(symbol, risk_mode, strategy, months=None):
-    # —— fetch data depending on strategy —— 
+    # Fetch data
     if strategy == "Very Fast Trade (<1h)":
         df = yf.Ticker(symbol).history(period='1d', interval='5m')
-        strat_label = "Very Fast Trade (<1h)"
-    elif strategy == "Fast Trade (today)":
-        df = yf.Ticker(symbol).history(period='10d', interval='15m')
-        strat_label = "Fast Trade (today)"
-    else: # Long-Term Hold
-        period = f"{months}mo" if months else '12mo'
-        df = yf.Ticker(symbol).history(period=period, interval='1d')
-        strat_label = f"Long-Term Hold ({months}mo)" if months else "Long-Term Hold"
+    else:
+        df = yf.Ticker(symbol).history(period='6mo', interval='1d')
 
     if df.empty:
         st.warning("No data found for this symbol.")
-        return None
+        return
+
     df.dropna(inplace=True)
 
-    # Calculations
     df["MA_10"] = df.Close.rolling(10).mean()
     df["MA_30"] = df.Close.rolling(30).mean()
     df['H-L']   = df.High - df.Low
@@ -90,7 +62,56 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
         else "Downtrend" if df.MA_10.iloc[-1] < df.MA_30.iloc[-1]
         else "Sideways"
     )
-    patterns= detect_pattern(df)
+
+    # ----- PATTERN SCAN FOR ALL DAYS -----
+    pattern_days = []
+    pattern_names = []
+    for i in range(1, len(df)):
+        last, curr = df.iloc[i-1], df.iloc[i]
+        patts = []
+        # Bullish Engulfing
+        if (last.Close < last.Open and
+            curr.Close > curr.Open and
+            curr.Close > last.Open and
+            curr.Open < last.Close):
+            patts.append("Bullish Engulfing")
+        # Bearish Engulfing
+        if (last.Close > last.Open and
+            curr.Close < curr.Open and
+            curr.Close < last.Open and
+            curr.Open > last.Close):
+            patts.append("Bearish Engulfing")
+        # Hammer
+        if (curr.Close > curr.Open and
+            curr.Low < curr.Open - (curr.High - curr.Low) * 0.6):
+            patts.append("Hammer")
+        # Doji
+        if abs(curr.Open - curr.Close) < (curr.High - curr.Low) * 0.1:
+            patts.append("Doji")
+        if patts:
+            pattern_days.append(df.index[i])
+            pattern_names.append(", ".join(patts))
+
+    # Trading logic as before, using only the most recent two days
+    patterns = []
+    if len(df) >= 2:
+        last, curr = df.iloc[-2], df.iloc[-1]
+        if (last.Close < last.Open and
+            curr.Close > curr.Open and
+            curr.Close > last.Open and
+            curr.Open < last.Close):
+            patterns.append("Bullish Engulfing")
+        if (last.Close > last.Open and
+            curr.Close < curr.Open and
+            curr.Close < last.Open and
+            curr.Open > last.Close):
+            patterns.append("Bearish Engulfing")
+        if (curr.Close > curr.Open and
+            curr.Low < curr.Open - (curr.High - curr.Low) * 0.6):
+            patterns.append("Hammer")
+        if abs(curr.Open - curr.Close) < (curr.High - curr.Low) * 0.1:
+            patterns.append("Doji")
+
     bullish = any(p in patterns for p in ["Bullish Engulfing","Hammer"])
     bearish = any(p in patterns for p in ["Bearish Engulfing"])
 
@@ -99,7 +120,7 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
     elif strategy == "Fast Trade (today)":
         risk_dist = mult * atr * math.sqrt(1)
     else:  # Long-Term Hold
-        days = (months or 12) * 21  # approx trading days in N months
+        days = months * 21  # approx trading days
         risk_dist = mult * atr * math.sqrt(days)
 
     if (trend=="Uptrend" or bullish) and not bearish:
@@ -117,7 +138,7 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
 
     rr_ratio = abs((target_price - close) / (close - stop_loss))
 
-    # —— chart —— 
+    # —— build chart —— 
     fig = go.Figure(data=[go.Candlestick(
         x=df.index, open=df.Open, high=df.High, low=df.Low, close=df.Close
     )])
@@ -126,32 +147,44 @@ def analyze_symbol(symbol, risk_mode, strategy, months=None):
     fig.add_trace(go.Scatter(
         x=df.index, y=df.RSI_14, yaxis="y2", name="RSI(14)"
     ))
+
+    # ——— ADD PATTERN MARKERS ON CHART ———
+    if pattern_days:
+        fig.add_trace(go.Scatter(
+            x=pattern_days,
+            y=[df.loc[d].Close for d in pattern_days],
+            mode="markers+text",
+            marker=dict(size=12, color="gold", symbol="star"),
+            text=pattern_names,
+            textposition="top center",
+            name="Patterns"
+        ))
+
     fig.update_layout(
-        title=f"{symbol} | {trend} | {strat_label}",
+        title=(f"{symbol} | {trend} | {strategy}" +
+               (f" ({months} mo)" if strategy=="Long-Term Hold" else "")),
         yaxis2=dict(overlaying="y", side="right", range=[0,100], title="RSI"),
         xaxis_rangeslider_visible=False,
         height=650
     )
-    # Metrics
-    metrics = dict(
-        Strategy=strat_label,
-        Trend=trend,
-        Patterns=', '.join(patterns) or 'None',
-        Action=action,
-        Entry=f"{close:.2f}",
-        Target=f"{target_price:.2f}",
-        Stop_Loss=f"{stop_loss:.2f}",
-        RR_Ratio=f"{rr_ratio:.2f}",
-        RSI=f"{rsi:.1f}",
-        ATR=f"{atr:.2f}"
-    )
-    return fig, metrics
 
-# —— Show only ONE chart depending on selection ——
+    st.subheader("Candlestick + RSI Chart")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(f"""
+    **Strategy:** {strategy}  
+    {f"**Hold Period:** {months} months  " if strategy=="Long-Term Hold" else ""}  
+    **Trend:** {trend}  
+    **Patterns:** {', '.join(patterns) or 'None'}  
+    **Action:** {action}  
+    **Entry:** {close:.2f}  
+    **Target:** {target_price:.2f}  
+    **Stop Loss:** {stop_loss:.2f}  
+    **R/R Ratio:** {rr_ratio:.2f}  
+    **RSI(14):** {rsi:.1f}  
+    **ATR:** {atr:.2f}  
+    _Risk mult: {mult}, time-scale factor: {"1 bar" if strategy.startswith("Very Fast") else ("1 day" if strategy=="Fast Trade (today)" else f"{days} days (√)")}_  
+    """)
+
 if symbol:
-    st.subheader(f"Analysis: {strategy}")
-    out = analyze_symbol(symbol, risk_mode, strategy, months)
-    if out:
-        fig, metrics = out
-        st.plotly_chart(fig, use_container_width=True)
-        st.write(metrics)
+    analyze_symbol(symbol, risk_mode, strategy, months)
